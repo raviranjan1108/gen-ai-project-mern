@@ -1,7 +1,7 @@
 const { Mistral } = require("@mistralai/mistralai");
 const { z } = require("zod");
 const { zodToJsonSchema } = require("zod-to-json-schema");
-const htmlPdf = require("html-pdf-node");
+const PDFDocument = require("pdfkit");
 
 const client = new Mistral({
     apiKey: process.env.MISTRAL_API_KEY,
@@ -118,8 +118,7 @@ Make the resume clean, professional, and ATS-friendly.`;
         const cleaned = rawContent.replace(/```json|```/g, "").trim();
         const jsonContent = JSON.parse(cleaned);
 
-        // handle both {"html": "..."} and {"resume": {"html": "..."}}
-        const html = jsonContent.html || jsonContent.resume?.html
+        const html = jsonContent.html || jsonContent.resume?.html;
 
         if (!html) {
             throw new Error("AI did not return valid HTML content");
@@ -134,21 +133,32 @@ Make the resume clean, professional, and ATS-friendly.`;
     }
 }
 
-// FIX: replaced puppeteer with html-pdf-node (works on Render free tier)
+// FIX: replaced puppeteer/html-pdf-node with pdfkit
+// pdfkit does not require Chrome — works perfectly on Render free tier
 async function generatePdfFromHtml(htmlContent) {
-    const file = { content: htmlContent };
-    const options = {
-        format: "A4",
-        margin: {
-            top: "20px",
-            bottom: "20px",
-            left: "20px",
-            right: "20px",
-        }
-    };
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50 });
+        const buffers = [];
 
-    const pdfBuffer = await htmlPdf.generatePdf(file, options);
-    return pdfBuffer;
+        doc.on("data", (chunk) => buffers.push(chunk));
+        doc.on("end", () => resolve(Buffer.concat(buffers)));
+        doc.on("error", reject);
+
+        // Strip HTML tags and get clean plain text
+        const text = htmlContent
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+            .replace(/<[^>]+>/g, "\n")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
+
+        doc.fontSize(11).text(text, { align: "left" });
+        doc.end();
+    });
 }
 
 module.exports = { generateInterviewReport, generateResumePdf, generatePdfFromHtml };
