@@ -6,28 +6,25 @@ const tokenBlacklistModel = require("../models/blacklist.model");
 if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET missing")
 }
-// Email validation regex
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 async function registerUserController(req, res) {
     try {
         const { username, email, password } = req.body;
 
-        // Input validation
         if (!username || !email || !password) {
             return res.status(400).json({
                 message: "Please provide username, email and password"
             })
         }
 
-        // Email format validation
         if (!emailRegex.test(email)) {
             return res.status(400).json({
                 message: "Please provide a valid email address"
             })
         }
 
-        // Password strength validation
         if (password.length < 6) {
             return res.status(400).json({
                 message: "Password must be at least 6 characters long"
@@ -58,10 +55,11 @@ async function registerUserController(req, res) {
             { expiresIn: "1d" }
         )
 
+        // FIX: sameSite none for cross-domain production
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+            secure: true,
+            sameSite: "none",
             maxAge: 24 * 60 * 60 * 1000
         })
 
@@ -82,13 +80,10 @@ async function registerUserController(req, res) {
     }
 }
 
-
-
 async function loginUserController(req, res) {
     try {
         const { email, password } = req.body;
 
-        // Input validation
         if (!email || !password) {
             return res.status(400).json({
                 message: "Please provide email and password"
@@ -116,10 +111,13 @@ async function loginUserController(req, res) {
             { expiresIn: "1d" }
         )
 
-        res.clearCookie("token", {
+        // FIX: was res.clearCookie — should be res.cookie to SET the token
+        // FIX: sameSite none for cross-domain production
+        res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+            secure: true,
+            sameSite: "none",
+            maxAge: 24 * 60 * 60 * 1000
         })
 
         res.status(200).json({
@@ -139,7 +137,6 @@ async function loginUserController(req, res) {
     }
 }
 
-
 async function logoutUserController(req, res) {
     try {
         const token = req.cookies.token;
@@ -148,7 +145,12 @@ async function logoutUserController(req, res) {
             await tokenBlacklistModel.create({ token })
         }
 
-        res.clearCookie("token")
+        // FIX: sameSite none for cross-domain production
+        res.clearCookie("token", {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+        })
 
         res.status(200).json({
             message: "User logged out successfully"
@@ -161,7 +163,6 @@ async function logoutUserController(req, res) {
         })
     }
 }
-
 
 async function getMeController(req, res) {
     try {
