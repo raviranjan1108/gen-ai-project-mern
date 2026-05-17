@@ -1,7 +1,7 @@
 const { Mistral } = require("@mistralai/mistralai");
 const { z } = require("zod");
 const { zodToJsonSchema } = require("zod-to-json-schema");
-const puppeteer = require("puppeteer");
+const htmlPdf = require("html-pdf-node");
 
 const client = new Mistral({
     apiKey: process.env.MISTRAL_API_KEY,
@@ -104,8 +104,6 @@ Make the resume clean, professional, and ATS-friendly.`;
         const response = await client.chat.complete({
             model: "mistral-small-latest",
             messages: [{ role: "user", content: prompt }],
-            // FIX: json_object use karo instead of json_schema
-            // json_schema HTML jaisi badi content ko truncate kar deta tha
             responseFormat: {
                 type: "json_object",
             },
@@ -117,12 +115,10 @@ Make the resume clean, professional, and ATS-friendly.`;
             throw new Error("Empty response received from AI model");
         }
 
-        // FIX: strip markdown backticks before parsing
         const cleaned = rawContent.replace(/```json|```/g, "").trim();
         const jsonContent = JSON.parse(cleaned);
 
-        // FIX: AI kabhi {"html": "..."} deta hai, kabhi {"resume": {"html": "..."}}
-        // dono cases handle karo
+        // handle both {"html": "..."} and {"resume": {"html": "..."}}
         const html = jsonContent.html || jsonContent.resume?.html
 
         if (!html) {
@@ -138,31 +134,21 @@ Make the resume clean, professional, and ATS-friendly.`;
     }
 }
 
+// FIX: replaced puppeteer with html-pdf-node (works on Render free tier)
 async function generatePdfFromHtml(htmlContent) {
-    const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: true,
-    });
+    const file = { content: htmlContent };
+    const options = {
+        format: "A4",
+        margin: {
+            top: "20px",
+            bottom: "20px",
+            left: "20px",
+            right: "20px",
+        }
+    };
 
-    try {
-        const page = await browser.newPage();
-        await page.setContent(htmlContent, { waitUntil: "networkidle0" });
-
-        const pdf = await page.pdf({
-            format: "A4",
-            printBackground: true,
-            margin: {
-                top: "20px",
-                bottom: "20px",
-                left: "20px",
-                right: "20px",
-            },
-        });
-
-        return pdf;
-    } finally {
-        await browser.close();
-    }
+    const pdfBuffer = await htmlPdf.generatePdf(file, options);
+    return pdfBuffer;
 }
 
 module.exports = { generateInterviewReport, generateResumePdf, generatePdfFromHtml };
