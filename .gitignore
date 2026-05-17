@@ -6,3 +6,4 @@ Backend/.env
 *.log
 dist/
 build/
+.env
